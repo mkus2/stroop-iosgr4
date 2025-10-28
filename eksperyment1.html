@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stroop Eksperyment 1 - Czytanie Słów</title>
+<style>
+  html,body{height:100%}
+  body{
+    margin:0;
+    background:#e9e9e9;
+    color:#111;
+    font-family:'Calibri','Segoe UI',Roboto,sans-serif;
+    display:flex;align-items:center;justify-content:center
+  }
+  #app{max-width:900px;padding:24px;text-align:center}
+  h1,h2{margin:0 0 12px} p{line-height:1.5}
+  .muted{color:#555}
+
+  /* Bodziec */
+  .big{
+    font-family:'Calibri','Segoe UI',Roboto,sans-serif;
+    font-size:92px;
+    line-height:1.02;
+    font-weight:900;
+    letter-spacing:0.5px;
+    text-transform:uppercase;
+    -webkit-text-stroke:1px rgba(0,0,0,.25);
+    text-shadow:0 0 1px rgba(0,0,0,.25);
+    -webkit-font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
+  }
+  @media (max-width: 900px){ .big{ font-size:84px; } }
+  @media (max-width: 700px){ .big{ font-size:76px; } }
+  @media (max-width: 560px){ .big{ font-size:68px; } }
+
+  .fix{font-size:48px;color:#666}
+  .btn{background:#2d6cdf;color:#fff;border:none;border-radius:10px;padding:10px 16px;cursor:pointer;font-size:16px}
+  .row{margin:18px 0}
+  input[type=text]{font-size:18px;padding:8px 10px;border-radius:8px;border:1px solid #999;background:#fff;color:#111;letter-spacing:2px;text-transform:uppercase;text-align:center}
+
+  /* Instrukcja + pigułki klawiszy */
+  .keypill{
+    display:inline-flex;align-items:center;gap:8px;
+    background:#fff;color:#111;border-radius:999px;
+    padding:6px 10px;margin:6px;border:1px solid #ccc;
+    font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.06);
+  }
+  .keypill .k{
+    display:inline-block;min-width:28px;text-align:center;
+    border:1px solid #bbb;border-radius:6px;padding:2px 6px;
+    background:#f3f3f3;font-weight:800;
+  }
+  .instr-card{
+    background:#fff;color:#111;border-radius:16px;padding:18px 20px;
+    border:1px solid #ddd;box-shadow:0 2px 8px rgba(0,0,0,.06);
+    display:inline-block;text-align:left;
+  }
+  .instr-card h3{ margin:0 0 10px; font-size:22px }
+  .instr-card p{ margin:8px 0 12px }
+  .center{ text-align:center }
+
+  /* Karta bodźca */
+  .stim-card{
+    background:#fff; border:1px solid #ddd; box-shadow:0 4px 18px rgba(0,0,0,.08);
+    border-radius:18px; padding:40px 28px; display:inline-block; min-width: min(90vw, 780px);
+  }
+
+  /* Wynik */
+  .stats{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:8px}
+  .statpill{
+    background:#fff;border:1px solid #ddd;border-radius:12px;
+    padding:8px 12px;font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.06)
+  }
+  .block-info{
+    background:#fff5dc;border:1px solid #dda;border-radius:8px;
+    padding:10px;margin:15px 0;font-weight:600;
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+/* ------- KONFIG ------- */
+var CONFIG = {
+  TRAIN_N: 10,
+  TEST_N: 50,
+  MAX_RT: 2000,
+  ITI: 200,
+  FIX: 300,
+  SAFETY_MS: 15000,
+  BLACK_COLOR: "#111111",
+  ENDPOINT_URL: "https://script.google.com/macros/s/AKfycbyX4swWLTPrPlE-fdU6dJjRKkUk7HViz8vj2geAof4TKSsgxvEGFQIEe1hLwMmBkIDS/exec"
+};
+
+/* ------- KOLORY ------- */
+var COLORS = [
+  { word:"CZERWONY",  css:"#D32F2F", key:"c", idx:1 },
+  { word:"ZIELONY",   css:"#2E7D32", key:"z", idx:2 },
+  { word:"NIEBIESKI", css:"#1565C0", key:"n", idx:3 },
+  { word:"FIOLETOWY", css:"#6A1B9A", key:"f", idx:4 },
+  { word:"BRĄZOWY",   css:"#6D4C41", key:"b", idx:5 }
+];
+
+/* ------- UTIL ------- */
+var app = document.getElementById('app');
+function sleep(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+function shuffle(a){ for(var i=a.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=a[i]; a[i]=a[j]; a[j]=t; } return a; }
+function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+
+/* makeTrial dla Eksperymentu 1 - czytanie słów */
+function makeTrial(blackInk, baseColor) {
+  var color = baseColor || pick(COLORS);
+  var word = color.word;
+  
+  var ink;
+  if(blackInk) {
+    ink = CONFIG.BLACK_COLOR;
+  } else {
+    // Wybierz kolor atramentu RÓŻNY od słowa
+    var otherColors = COLORS.filter(function(c){ return c.css !== color.css; });
+    ink = pick(otherColors).css;
+  }
+  
+  return {
+    stim_word: word,
+    ink_color: ink,
+    congruency: blackInk ? 2 : 0,  // 2=czarny (RCNb), 0=kolorowy niezgodny (RCNd)
+    correct_key: color.key,         // WAŻNE: reagujemy na SŁOWO, nie kolor!
+    correct_idx: color.idx
+  };
+}
+
+/* buildTrials - buduje próby dla treningu lub testu */
+function buildTrials(n, forceBlack) {
+  var trials = [];
+  
+  if(forceBlack !== undefined) {
+    // Dla bloków głównego testu - wszystkie tego samego typu
+    for(var i = 0; i < n; i++) {
+      trials.push(makeTrial(forceBlack));
+    }
+  } else {
+    // Dla treningu - mieszamy pół na pół
+    var half = Math.floor(n/2);
+    for(var i = 0; i < half; i++) {
+      trials.push(makeTrial(true));   // czarne
+    }
+    for(var i = 0; i < n - half; i++) {
+      trials.push(makeTrial(false));  // kolorowe
+    }
+  }
+  
+  shuffle(trials);
+  return trials;
+}
+
+/* CSV utils */
+function toCSV(rows){
+  if(!rows.length) return "no_data\n";
+  var header = Object.keys(rows[0]);
+  var out = [header.join(",")];
+  for(var i=0;i<rows.length;i++){
+    var r = rows[i], line = [];
+    for(var k=0;k<header.length;k++){
+      var h = header[k];
+      var v = (r[h]==null ? "" : String(r[h]).replace(/"/g,'""'));
+      line.push(/["\n,]/.test(v) ? '"'+v+'"' : v);
+    }
+    out.push(line.join(","));
+  }
+  return out.join("\n");
+}
+function downloadCSV(filename, csv){
+  var blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+/* ------- APLIKACJA ------- */
+var PID = "";
+var LOG = [];
+var blockNumber = 0;
+
+function screenIntro(){
+  app.innerHTML =
+    '<h2>Eksperyment Stroopa 1 - Czytanie Słów</h2>' +
+    '<div class="row"><p>Wpisz swoje inicjały (2 litery, np. AK) i naciśnij „Dalej".</p>' +
+    '<input id="pid" type="text" maxlength="2" placeholder="AK" autofocus></div>' +
+    '<div class="row"><button class="btn" id="next1">Dalej</button></div>';
+  document.getElementById('next1').onclick = function(){
+    var v = (document.getElementById('pid').value||"").trim().toUpperCase();
+    if(!/^[A-ZĄĆĘŁŃÓŚŹŻ]{2}$/.test(v)){ alert("Podaj dokładnie 2 litery."); return; }
+    PID = v;
+    screenInstr();
+  };
+}
+
+function screenInstr(){
+  app.innerHTML =
+    '<div class="instr-card">' +
+      '<h3 class="center">Instrukcja - CZYTANIE SŁÓW</h3>' +
+      '<p class="center" style="font-size:20px;color:#d22;font-weight:700">⚠️ CZYTAJ SŁOWA, ignoruj kolor atramentu!</p>' +
+      '<p class="center">Twoim zadaniem jest jak najszybsze <b>PRZECZYTANIE SŁOWA</b>,<br>które pojawi się na ekranie.</p>' +
+      '<div class="center" style="margin:10px 0 6px">' +
+        '<span class="keypill"><span class="k">C</span>gdy widzisz słowo "CZERWONY"</span>' +
+        '<span class="keypill"><span class="k">Z</span>gdy widzisz słowo "ZIELONY"</span>' +
+        '<span class="keypill"><span class="k">N</span>gdy widzisz słowo "NIEBIESKI"</span>' +
+        '<span class="keypill"><span class="k">F</span>gdy widzisz słowo "FIOLETOWY"</span>' +
+        '<span class="keypill"><span class="k">B</span>gdy widzisz słowo "BRĄZOWY"</span>' +
+      '</div>' +
+      '<p class="center muted">' +
+        'Najpierw trening (10 prób), potem test w 2 blokach:<br>' +
+        '<b>Blok 1:</b> słowa w czarnym kolorze (25 prób)<br>' +
+        '<b>Blok 2:</b> słowa w różnych kolorach (25 prób)<br>' +
+        'Odpowiadaj <b>szybko i poprawnie</b>. Jeśli się pomylisz - <b>naciśnij właściwy klawisz</b>.' +
+      '</p>' +
+      '<p class="center" style="color:#b22222;font-weight:700;">⚠️ Upewnij się, że <u>CAPS LOCK jest wyłączony</u>.</p>' +
+      '<div class="center" style="margin-top:10px">' +
+        '<button class="btn" id="startTrain">Zaczynam trening</button>' +
+      '</div>' +
+    '</div>';
+  document.getElementById('startTrain').onclick = function(){ runBlock("training", CONFIG.TRAIN_N); };
+}
+
+async function runBlock(phase, ntrials){
+  var trials;
+  
+  if(phase === "training") {
+    trials = buildTrials(ntrials);  // mieszane czarne i kolorowe
+  } else if(phase === "test_black") {
+    blockNumber = 1;
+    trials = buildTrials(ntrials, true);   // wszystkie czarne
+  } else if(phase === "test_color") {
+    blockNumber = 2;
+    trials = buildTrials(ntrials, false);  // wszystkie kolorowe
+  }
+
+  for(var i=0;i<trials.length;i++){
+    app.innerHTML = '<div class="fix">+</div>';
+    await sleep(CONFIG.FIX);
+
+    var t = trials[i];
+    var start = performance.now();
+    app.innerHTML = '<div class="stim-card"><div class="big" style="color:'+t.ink_color+';">'+t.stim_word+'</div></div>';
+
+    /* reakcja z możliwością poprawy + bezpiecznik 15 s */
+    var result = await new Promise(function(resolve){
+      var errors = 0;
+      var timer;
+
+      function onKey(e){
+        var k = (e.key||"").toLowerCase();
+        if(k==="c"||k==="z"||k==="n"||k==="f"||k==="b"){
+          if(k !== t.correct_key){ errors++; return; }
+          var rt = Math.round(performance.now() - start);
+          cleanup();
+          resolve({ key:k, status:1, rt:rt, errors:errors });
+        }
+      }
+      function onTimeout(){
+        cleanup();
+        resolve({ key:"", status:3, rt: CONFIG.SAFETY_MS, errors:errors });
+      }
+      function cleanup(){
+        window.removeEventListener('keydown', onKey);
+        clearTimeout(timer);
+      }
+      window.addEventListener('keydown', onKey);
+      timer = setTimeout(onTimeout, CONFIG.SAFETY_MS);
+    });
+
+    LOG.push({
+      pid: PID,
+      phase: phase,
+      block: blockNumber,
+      trial_num: i + 1,
+      stim_word: t.stim_word,
+      ink_color: t.ink_color,
+      congruency: t.congruency,
+      correct_key: t.correct_key,
+      correct_idx: t.correct_idx,
+      key: result.key,
+      status: result.status,
+      rt: result.rt,
+      errors_before_correct: result.errors
+    });
+
+    app.innerHTML = '';
+    await sleep(CONFIG.ITI);
+  }
+
+  // Przejścia między blokami
+  if(phase === "training"){
+    app.innerHTML =
+      '<div class="block-info">Trening zakończony!</div>' +
+      '<p>Teraz rozpocznie się test właściwy.</p>' +
+      '<p><b>BLOK 1:</b> Słowa w czarnym kolorze (25 prób)</p>' +
+      '<div class="row"><button class="btn" id="startBlock1">Start Bloku 1</button></div>';
+    document.getElementById('startBlock1').onclick = function(){ runBlock("test_black", 25); };
+  } else if(phase === "test_black"){
+    app.innerHTML =
+      '<div class="block-info">Blok 1 zakończony!</div>' +
+      '<p><b>BLOK 2:</b> Słowa w różnych kolorach (25 prób)</p>' +
+      '<p class="muted">Pamiętaj: nadal <b>CZYTAJ SŁOWA</b>, ignoruj kolory!</p>' +
+      '<div class="row"><button class="btn" id="startBlock2">Start Bloku 2</button></div>';
+    document.getElementById('startBlock2').onclick = function(){ runBlock("test_color", 25); };
+  } else {
+    finish();
+  }
+}
+
+async function finish(){
+  // Analiza wyników
+  var testBlack = LOG.filter(function(r){ return r.phase==="test_black"; });
+  var testColor = LOG.filter(function(r){ return r.phase==="test_color"; });
+  
+  // Średnie czasy reakcji
+  function avgRT(arr){
+    var valid = arr.filter(function(r){ return r.status===1 && r.rt < CONFIG.SAFETY_MS; });
+    if(!valid.length) return 0;
+    var sum = valid.reduce(function(a,b){ return a + b.rt; }, 0);
+    return Math.round(sum / valid.length);
+  }
+  
+  var rtBlack = avgRT(testBlack);
+  var rtColor = avgRT(testColor);
+  var difference = rtColor - rtBlack;
+  var percentIncrease = rtBlack > 0 ? ((difference / rtBlack) * 100).toFixed(1) : 0;
+
+  var summaryHTML =
+    '<div class="instr-card">'+
+      '<h3 class="center">Twoje wyniki - Eksperyment 1 (Czytanie)</h3>'+
+      '<div class="stats">'+
+        '<span class="statpill">Blok 1 (czarne): '+rtBlack+' ms</span>'+
+        '<span class="statpill">Blok 2 (kolorowe): '+rtColor+' ms</span>'+
+        '<span class="statpill">Różnica: +'+difference+' ms ('+percentIncrease+'%)</span>'+
+      '</div>'+
+      '<p class="center muted" style="margin-top:12px">'+
+        'W oryginalnym badaniu Stroopa różnica wynosiła tylko 2.3 s (5.6%) dla 100 słów.'+
+      '</p>'+
+    '</div>';
+
+  app.innerHTML = '<h2>Koniec</h2><p class="muted">Trwa zapisywanie wyników…</p>';
+
+  // Próba wysyłki do Google Sheet
+  if(CONFIG.ENDPOINT_URL){
+    try{
+      await fetch(CONFIG.ENDPOINT_URL, {
+        method: "POST",
+        mode: "no-cors",
+        headers: {"Content-Type":"text/plain;charset=utf-8"},
+        body: JSON.stringify({ payload: LOG })
+      });
+      app.innerHTML = summaryHTML + '<p class="muted center" style="margin-top:12px">Dane zostały przesłane — dziękujemy!</p>';
+      return;
+    }catch(e){}
+  }
+
+  // Fallback: CSV
+  var csv = toCSV(LOG);
+  var fname = 'stroop_exp1_read_'+PID+'_'+new Date().toISOString().replace(/[:.]/g,'-')+'.csv';
+  downloadCSV(fname, csv);
+  app.innerHTML = summaryHTML + '<p class="muted center" style="margin-top:12px">Nie udało się połączyć z serwerem — pobrano plik z wynikami.</p>';
+}
+
+/* start */
+screenIntro();
+</script>
+</body>
+</html>
